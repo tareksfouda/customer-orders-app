@@ -1,232 +1,520 @@
-# Customer Orders Application
+# Customer Orders Microservices Application
 
-A full-stack web application for managing customers, orders, items, and purchases with Spring Boot backend and React frontend. Includes Spring Security OAuth2 JWT authentication and authorization.
+A Spring Boot microservices architecture for managing customer orders with three independent services:
+- **Auth Service** (Port 8081) - Authentication and JWT token generation
+- **Orders Service** (Port 8082) - Order management with token validation
+- **Inventory Service** (Port 8083) - Product inventory management with token validation
 
-## Architecture
-
-- **Backend**: Spring Boot 3.x with Spring Security, Spring Data JPA, OAuth2, JWT
-- **Frontend**: React 18.x with Axios for API calls
-- **Database**: PostgreSQL
-- **Containerization**: Docker & Docker Compose
-
-## Features
-
-- User authentication with JWT tokens
-- OAuth2 integration for secure API access
-- Role-based authorization (CUSTOMER, ADMIN)
-- Customers can only view their own orders
-- RESTful API for managing customers, orders, items, and purchases
-- Real-time order tracking
-- Responsive React UI
-
-## Project Structure
+## Architecture Overview
 
 ```
-.
-├── backend/                 # Spring Boot application
-│   ├── src/
-│   ├── pom.xml
-│   └── Dockerfile
-├── frontend/                # React application
-│   ├── src/
-│   ├── package.json
-│   └── Dockerfile
-├── docker-compose.yml       # Docker compose configuration
-└── README.md
+┌─────────────┐
+│   Frontend  │ (React, Port 3000)
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────┐
+│   API Gateway       │ (Port 8080)
+│   Route & Auth      │
+└──────┬──────────────┘
+       │
+   ┌───┴────┬──────────────┬──────────────┐
+   │        │              │              │
+   ▼        ▼              ▼              ▼
+┌──────┐ ┌──────┐    ┌──────┐    ┌──────────┐
+│ Auth │ │Orders│    │ Inv. │    │ Postgres │
+│ Svc  │ │ Svc  │    │ Svc  │    │  DB (3)  │
+└──┬───┘ └──┬───┘    └──┬───┘    └──────────┘
+   │        │          │
+   └────────┴──────────┘
+   (Inter-service calls via REST/HTTP)
 ```
 
-## Quick Start
+## Prerequisites
 
-### Prerequisites
+- Java 17+
+- Maven 3.9+
 - Docker & Docker Compose
-- Java 17+ (for local development)
-- Node.js 16+ (for local development)
+- PostgreSQL 15 (or use Docker)
 
-### Using Docker Compose
+## Local Development Setup
 
+### 1. Clone the repository
 ```bash
-# Clone the repository
-git clone https://github.com/tareksfouda/customer-orders-app.git
+git clone <repo-url>
 cd customer-orders-app
+```
 
-# Start all services
+### 2. Start services with Docker Compose
+```bash
 docker-compose up -d
-
-# Check logs
-docker-compose logs -f
 ```
 
-Services will be available at:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8080/api
-- Database: localhost:5432
+This will start:
+- 3 PostgreSQL databases (ports 5432, 5433, 5434)
+- Auth Service (port 8081)
+- Orders Service (port 8082)
+- Inventory Service (port 8083)
+- API Gateway (port 8080)
+- Frontend (port 3000)
 
-### Local Development
-
-#### Backend
-
+### 3. Verify services are running
 ```bash
-cd backend
-mvn clean install
-mvn spring-boot:run
-```
+# Check all containers
+docker-compose ps
 
-#### Frontend
-
-```bash
-cd frontend
-npm install
-npm start
+# View logs
+docker-compose logs -f auth-service
+docker-compose logs -f orders-service
+docker-compose logs -f inventory-service
 ```
 
 ## API Endpoints
 
-### Authentication
-- `POST /api/auth/register` - Register new customer
-- `POST /api/auth/login` - Login and get JWT token
+### Auth Service (Port 8081)
 
-### Customers
-- `GET /api/customers/{id}` - Get customer details
-- `PUT /api/customers/{id}` - Update customer
+#### Register User
+```bash
+POST /api/auth/register
+Content-Type: application/json
 
-### Orders
-- `GET /api/orders` - Get current customer's orders
-- `GET /api/orders/{id}` - Get order details (only if owner)
-- `POST /api/orders` - Create new order
-- `PUT /api/orders/{id}` - Update order
-- `DELETE /api/orders/{id}` - Delete order
+{
+  "email": "user@example.com",
+  "password": "password123",
+  "firstName": "John",
+  "lastName": "Doe"
+}
 
-### Items
-- `GET /api/items` - Get all available items
-- `GET /api/items/{id}` - Get item details
-
-### Purchases
-- `POST /api/purchases` - Create purchase
-- `GET /api/purchases/{id}` - Get purchase details
-
-## Authentication & Authorization
-
-All API endpoints (except `/api/auth/*`) require JWT token in the `Authorization` header:
-
+Response:
+{
+  "token": "eyJhbGciOiJIUzUxMiJ9...",
+  "email": "user@example.com",
+  "firstName": "John",
+  "lastName": "Doe",
+  "userId": 1
+}
 ```
+
+#### Login User
+```bash
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+
+Response:
+{
+  "token": "eyJhbGciOiJIUzUxMiJ9...",
+  "email": "user@example.com",
+  "firstName": "John",
+  "lastName": "Doe",
+  "userId": 1
+}
+```
+
+#### Validate Token
+```bash
+POST /api/auth/validate
+Content-Type: application/json
+
+{
+  "token": "eyJhbGciOiJIUzUxMiJ9..."
+}
+
+Response: true/false
+```
+
+### Orders Service (Port 8082)
+
+#### Create Order
+```bash
+POST /api/orders/create
 Authorization: Bearer <JWT_TOKEN>
+Content-Type: application/json
+
+{
+  "orderNumber": "ORD-001",
+  "totalAmount": 299.99
+}
+
+Response:
+{
+  "id": 1,
+  "userId": 1,
+  "orderNumber": "ORD-001",
+  "status": "PENDING",
+  "totalAmount": 299.99,
+  "orderItems": []
+}
 ```
 
-Customers can only access:
-- Their own profile
-- Their own orders and purchases
+#### Get User Orders
+```bash
+GET /api/orders/my-orders
+Authorization: Bearer <JWT_TOKEN>
 
-Admins can access all resources.
-
-## Database Schema
-
-### Customers
-```sql
-CREATE TABLE customers (
-  id BIGINT PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password VARCHAR(255) NOT NULL,
-  first_name VARCHAR(255),
-  last_name VARCHAR(255),
-  phone VARCHAR(20),
-  address VARCHAR(500),
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP
-);
+Response: [Order1, Order2, ...]
 ```
 
-### Orders
-```sql
-CREATE TABLE orders (
-  id BIGINT PRIMARY KEY,
-  customer_id BIGINT NOT NULL,
-  order_number VARCHAR(50) UNIQUE,
-  status VARCHAR(50),
-  total_amount DECIMAL(10,2),
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP,
-  FOREIGN KEY (customer_id) REFERENCES customers(id)
-);
+### Inventory Service (Port 8083)
+
+#### Create Product
+```bash
+POST /api/inventory/products
+Authorization: Bearer <JWT_TOKEN>
+Content-Type: application/json
+
+{
+  "name": "Laptop",
+  "description": "High-performance laptop",
+  "price": 999.99,
+  "quantity": 50,
+  "sku": "LAPTOP-001"
+}
+
+Response:
+{
+  "id": 1,
+  "name": "Laptop",
+  "description": "High-performance laptop",
+  "price": 999.99,
+  "quantity": 50,
+  "sku": "LAPTOP-001"
+}
 ```
 
-### Items
-```sql
-CREATE TABLE items (
-  id BIGINT PRIMARY KEY,
-  name VARCHAR(255),
-  description TEXT,
-  price DECIMAL(10,2),
-  quantity INT,
-  created_at TIMESTAMP
-);
+#### Get All Products
+```bash
+GET /api/inventory/products
+Authorization: Bearer <JWT_TOKEN>
+
+Response: [Product1, Product2, ...]
 ```
 
-### Purchases
-```sql
-CREATE TABLE purchases (
-  id BIGINT PRIMARY KEY,
-  order_id BIGINT NOT NULL,
-  item_id BIGINT NOT NULL,
-  quantity INT,
-  unit_price DECIMAL(10,2),
-  created_at TIMESTAMP,
-  FOREIGN KEY (order_id) REFERENCES orders(id),
-  FOREIGN KEY (item_id) REFERENCES items(id)
-);
+#### Check Stock
+```bash
+POST /api/inventory/check-stock
+Authorization: Bearer <JWT_TOKEN>
+Content-Type: application/json
+
+{
+  "productId": 1,
+  "quantity": 5
+}
+
+Response:
+{
+  "productId": 1,
+  "available": true,
+  "currentStock": 50,
+  "requestedQuantity": 5
+}
 ```
+
+## Building and Running Individual Services
+
+### Auth Service
+```bash
+cd services/auth-service
+mvn clean package
+java -jar target/auth-service-1.0.0.jar
+```
+
+### Orders Service
+```bash
+cd services/orders-service
+mvn clean package
+java -jar target/orders-service-1.0.0.jar
+```
+
+### Inventory Service
+```bash
+cd services/inventory-service
+mvn clean package
+java -jar target/inventory-service-1.0.0.jar
+```
+
+## Database Configuration
+
+Each service has its own PostgreSQL database:
+
+| Service | Database | Port | Connection String |
+|---------|----------|------|-------------------|
+| Auth | auth_db | 5432 | jdbc:postgresql://localhost:5432/auth_db |
+| Orders | orders_db | 5433 | jdbc:postgresql://localhost:5433/orders_db |
+| Inventory | inventory_db | 5434 | jdbc:postgresql://localhost:5434/inventory_db |
+
+**Default credentials:** postgres/postgres
+
+## AWS Deployment
+
+### Prerequisites for AWS
+- AWS Account
+- AWS CLI configured
+- IAM permissions for ECS, RDS, ECR, ALB
+
+### Architecture on AWS
+
+```
+┌──────────────────────────────────────────────┐
+│           AWS Cloud                          │
+│                                              │
+│  ┌────────────────────────────────────────┐ │
+│  │  Application Load Balancer (ALB)       │ │
+│  │  (Route traffic to ECS services)       │ │
+│  └──────────────┬─────────────────────────┘ │
+│                 │                            │
+│     ┌───────────┼───────────┐               │
+│     │           │           │               │
+│  ┌──▼───┐   ┌──▼───┐   ┌──▼──────┐        │
+│  │ECS   │   │ECS   │   │ECS      │        │
+│  │Auth  │   │Orders│   │Inventory│        │
+│  │Task  │   │Task  │   │Task     │        │
+│  └──────┘   └──────┘   └─────────┘        │
+│                                            │
+│  ┌──────────────────────────────────────┐ │
+│  │  AWS RDS (PostgreSQL)                │ │
+│  │  - 3 Databases in same RDS instance  │ │
+│  └──────────────────────────────────────┘ │
+│                                            │
+│  ┌──────────────────────────────────────┐ │
+│  │  AWS Secrets Manager                 │ │
+│  │  - JWT Secret                        │ │
+│  │  - Database credentials              │ │
+│  └──────────────────────────────────────┘ │
+└──────────────────────────────────────────────┘
+```
+
+### Step 1: Push Docker Images to ECR
+
+```bash
+# Create ECR repository
+aws ecr create-repository --repository-name customer-orders-app --region us-east-1
+
+# Get login token
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
+
+# Build and push Auth Service
+docker build -t customer-orders-app:auth-latest ./services/auth-service
+docker tag customer-orders-app:auth-latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/customer-orders-app:auth-latest
+docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/customer-orders-app:auth-latest
+
+# Build and push Orders Service
+docker build -t customer-orders-app:orders-latest ./services/orders-service
+docker tag customer-orders-app:orders-latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/customer-orders-app:orders-latest
+docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/customer-orders-app:orders-latest
+
+# Build and push Inventory Service
+docker build -t customer-orders-app:inventory-latest ./services/inventory-service
+docker tag customer-orders-app:inventory-latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/customer-orders-app:inventory-latest
+docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/customer-orders-app:inventory-latest
+```
+
+### Step 2: Create RDS PostgreSQL Instance
+
+```bash
+aws rds create-db-instance \
+  --db-instance-identifier customer-orders-db \
+  --db-instance-class db.t3.micro \
+  --engine postgres \
+  --master-username postgres \
+  --master-user-password <STRONG_PASSWORD> \
+  --allocated-storage 20 \
+  --region us-east-1
+```
+
+### Step 3: Create Databases
+
+After RDS is running:
+
+```bash
+# Connect to RDS
+psql -h customer-orders-db.xxxxx.us-east-1.rds.amazonaws.com -U postgres
+
+# Create databases
+CREATE DATABASE auth_db;
+CREATE DATABASE orders_db;
+CREATE DATABASE inventory_db;
+```
+
+### Step 4: Create ECS Cluster
+
+```bash
+aws ecs create-cluster --cluster-name customer-orders-cluster --region us-east-1
+```
+
+### Step 5: Create ECS Task Definitions
+
+See `aws/` directory for CloudFormation templates.
 
 ## Environment Variables
 
-### Backend (.env)
+### Auth Service
 ```
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/customer_orders_db
+SPRING_DATASOURCE_URL=jdbc:postgresql://db-host:5432/auth_db
 SPRING_DATASOURCE_USERNAME=postgres
-SPRING_DATASOURCE_PASSWORD=postgres
-JWT_SECRET=your-secret-key
+SPRING_DATASOURCE_PASSWORD=<password>
+JWT_SECRET=<min-32-chars-secret>
 JWT_EXPIRATION=86400000
-SPRING_JPA_HIBERNATE_DDL_AUTO=update
 ```
 
-### Frontend (.env)
+### Orders Service
 ```
-REACT_APP_API_URL=http://localhost:8080/api
+SPRING_DATASOURCE_URL=jdbc:postgresql://db-host:5433/orders_db
+SPRING_DATASOURCE_USERNAME=postgres
+SPRING_DATASOURCE_PASSWORD=<password>
+JWT_SECRET=<min-32-chars-secret>
+AUTH_SERVICE_URL=http://auth-service:8081
+INVENTORY_SERVICE_URL=http://inventory-service:8083
+```
+
+### Inventory Service
+```
+SPRING_DATASOURCE_URL=jdbc:postgresql://db-host:5434/inventory_db
+SPRING_DATASOURCE_USERNAME=postgres
+SPRING_DATASOURCE_PASSWORD=<password>
+JWT_SECRET=<min-32-chars-secret>
+AUTH_SERVICE_URL=http://auth-service:8081
 ```
 
 ## Testing
 
-### Backend
+### Test Auth Service
 ```bash
-cd backend
-mvn test
+# Register
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test123!",
+    "firstName": "Test",
+    "lastName": "User"
+  }'
+
+# Login
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test123!"
+  }'
 ```
 
-### Frontend
+### Test Orders Service (with token from login)
 ```bash
-cd frontend
-npm test
+curl -X POST http://localhost:8080/api/orders/create \
+  -H "Authorization: Bearer <YOUR_JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "orderNumber": "ORD-001",
+    "totalAmount": 299.99
+  }'
+```
+
+## Stopping Services
+
+```bash
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes
+docker-compose down -v
 ```
 
 ## Troubleshooting
 
 ### Database Connection Issues
-- Ensure PostgreSQL is running
-- Check credentials in `.env` file
-- Verify database name matches configuration
+```bash
+# Check if databases are running
+docker-compose ps
 
-### Port Already in Use
-- Change ports in `docker-compose.yml`
-- Kill process using the port: `lsof -i :PORT`
+# View database logs
+docker-compose logs postgres-auth
+docker-compose logs postgres-orders
+docker-compose logs postgres-inventory
+```
 
-### CORS Issues
-- Update `CORS_ALLOWED_ORIGINS` in backend configuration
-- Ensure frontend URL is whitelisted
+### Service Connection Issues
+```bash
+# Test service connectivity
+curl -v http://localhost:8081/api/auth/validate
+curl -v http://localhost:8082/api/orders
+curl -v http://localhost:8083/api/inventory/products
+```
+
+### Token Validation Issues
+- Ensure JWT_SECRET is the same across all services
+- Check token expiration time
+- Verify Authorization header format: `Bearer <token>`
+
+## Project Structure
+
+```
+customer-orders-app/
+├── docker-compose.yml
+├── README.md
+├── api-gateway/
+│   ├── pom.xml
+│   ├── Dockerfile
+│   └── src/main/java/...
+├── services/
+│   ├── auth-service/
+│   │   ├── pom.xml
+│   │   ├── Dockerfile
+│   │   └── src/main/java/com/customerorders/auth/
+│   │       ├── AuthServiceApplication.java
+│   │       ├── controller/
+│   │       ├── service/
+│   │       ├── entity/
+│   │       ├── repository/
+│   │       ├── dto/
+│   │       ├── security/
+│   │       └── config/
+│   ├── orders-service/
+│   │   ├── pom.xml
+│   │   ├── Dockerfile
+│   │   └── src/main/java/com/customerorders/orders/
+│   │       ├── OrdersServiceApplication.java
+│   │       ├── controller/
+│   │       ├── service/
+│   │       ├── entity/
+│   │       ├── repository/
+│   │       ├── dto/
+│   │       ├── filter/
+│   │       └── config/
+│   └── inventory-service/
+│       ├── pom.xml
+│       ├── Dockerfile
+│       └── src/main/java/com/customerorders/inventory/
+│           ├── InventoryServiceApplication.java
+│           ├── controller/
+│           ├── service/
+│           ├── entity/
+│           ├── repository/
+│           ├── dto/
+│           ├── filter/
+│           └── security/
+└── aws/
+    ├── cloudformation-template.yml
+    ├── task-definition-auth.json
+    ├── task-definition-orders.json
+    └── task-definition-inventory.json
+```
+
+## CI/CD Pipeline
+
+See `.github/workflows/` for GitHub Actions CI/CD pipeline setup.
 
 ## Contributing
 
-1. Create a feature branch from `develop`
-2. Make your changes
-3. Create a pull request
+1. Create a feature branch
+2. Make changes
+3. Run tests
+4. Create a Pull Request
 
 ## License
 
-MIT
+MIT License
