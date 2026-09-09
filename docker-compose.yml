@@ -1,17 +1,17 @@
 version: '3.8'
 
 services:
-  postgres-customers:
+  postgres-auth:
     image: postgres:15-alpine
-    container_name: postgres-customers-db
+    container_name: postgres-auth-db
     environment:
-      POSTGRES_DB: customers_db
+      POSTGRES_DB: auth_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
-      - postgres_customers_data:/var/lib/postgresql/data
+      - postgres_auth_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -35,17 +35,17 @@ services:
       timeout: 5s
       retries: 5
 
-  postgres-items:
+  postgres-inventory:
     image: postgres:15-alpine
-    container_name: postgres-items-db
+    container_name: postgres-inventory-db
     environment:
-      POSTGRES_DB: items_db
+      POSTGRES_DB: inventory_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       - "5434:5432"
     volumes:
-      - postgres_items_data:/var/lib/postgresql/data
+      - postgres_inventory_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -64,36 +64,37 @@ services:
       SERVER_PORT: 8080
       JWT_SECRET: your-secret-key-change-this-in-production-min-32-chars
       JWT_EXPIRATION: 86400000
-      CUSTOMERS_SERVICE_URL: http://customers-service:8081
+      AUTH_SERVICE_URL: http://auth-service:8081
       ORDERS_SERVICE_URL: http://orders-service:8082
-      ITEMS_SERVICE_URL: http://items-service:8083
+      INVENTORY_SERVICE_URL: http://inventory-service:8083
     depends_on:
-      - customers-service
+      - auth-service
       - orders-service
-      - items-service
+      - inventory-service
     volumes:
       - ./api-gateway:/app
 
-  customers-service:
+  auth-service:
     build:
-      context: ./services/customers-service
+      context: ./services/auth-service
       dockerfile: Dockerfile
-    container_name: customers-service
+    container_name: auth-service
     ports:
       - "8081:8081"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-customers:5432/customers_db
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-auth:5432/auth_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_APPLICATION_NAME: customers-service
+      SPRING_APPLICATION_NAME: auth-service
       SERVER_PORT: 8081
       JWT_SECRET: your-secret-key-change-this-in-production-min-32-chars
+      JWT_EXPIRATION: 86400000
     depends_on:
-      postgres-customers:
+      postgres-auth:
         condition: service_healthy
     volumes:
-      - ./services/customers-service:/app
+      - ./services/auth-service:/app
 
   orders-service:
     build:
@@ -110,33 +111,35 @@ services:
       SPRING_APPLICATION_NAME: orders-service
       SERVER_PORT: 8082
       JWT_SECRET: your-secret-key-change-this-in-production-min-32-chars
-      CUSTOMERS_SERVICE_URL: http://customers-service:8081
+      AUTH_SERVICE_URL: http://auth-service:8081
+      INVENTORY_SERVICE_URL: http://inventory-service:8083
     depends_on:
       postgres-orders:
         condition: service_healthy
     volumes:
       - ./services/orders-service:/app
 
-  items-service:
+  inventory-service:
     build:
-      context: ./services/items-service
+      context: ./services/inventory-service
       dockerfile: Dockerfile
-    container_name: items-service
+    container_name: inventory-service
     ports:
       - "8083:8083"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-items:5432/items_db
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-inventory:5432/inventory_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_APPLICATION_NAME: items-service
+      SPRING_APPLICATION_NAME: inventory-service
       SERVER_PORT: 8083
       JWT_SECRET: your-secret-key-change-this-in-production-min-32-chars
+      AUTH_SERVICE_URL: http://auth-service:8081
     depends_on:
-      postgres-items:
+      postgres-inventory:
         condition: service_healthy
     volumes:
-      - ./services/items-service:/app
+      - ./services/inventory-service:/app
 
   frontend:
     build:
@@ -154,6 +157,6 @@ services:
       - /app/node_modules
 
 volumes:
-  postgres_customers_data:
+  postgres_auth_data:
   postgres_orders_data:
-  postgres_items_data:
+  postgres_inventory_data:
