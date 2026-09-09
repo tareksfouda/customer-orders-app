@@ -1,42 +1,161 @@
 version: '3.8'
 
 services:
-  postgres:
+  postgres-customers:
     image: postgres:15-alpine
-    container_name: customer-orders-db
+    container_name: postgres-customers-db
     environment:
-      POSTGRES_DB: customer_orders_db
+      POSTGRES_DB: customers_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_customers_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  backend:
+  postgres-orders:
+    image: postgres:15-alpine
+    container_name: postgres-orders-db
+    environment:
+      POSTGRES_DB: orders_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_orders_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-items:
+    image: postgres:15-alpine
+    container_name: postgres-items-db
+    environment:
+      POSTGRES_DB: items_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_items_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  eureka-server:
     build:
-      context: ./backend
+      context: ./eureka-server
       dockerfile: Dockerfile
-    container_name: customer-orders-backend
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    environment:
+      EUREKA_SERVER_PORT: 8761
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/eureka/apps"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/customer_orders_db
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_APPLICATION_NAME: api-gateway
+      JWT_SECRET: your-secret-key-change-this-in-production-min-32-chars
+      JWT_EXPIRATION: 86400000
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    volumes:
+      - ./api-gateway:/app
+
+  customers-service:
+    build:
+      context: ./services/customers-service
+      dockerfile: Dockerfile
+    container_name: customers-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-customers:5432/customers_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      JWT_SECRET: your-secret-key-change-this-in-production
-      JWT_EXPIRATION: 86400000
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_APPLICATION_NAME: customers-service
+      SERVER_PORT: 8081
+      JWT_SECRET: your-secret-key-change-this-in-production-min-32-chars
     depends_on:
-      postgres:
+      postgres-customers:
+        condition: service_healthy
+      eureka-server:
         condition: service_healthy
     volumes:
-      - ./backend:/app
+      - ./services/customers-service:/app
+
+  orders-service:
+    build:
+      context: ./services/orders-service
+      dockerfile: Dockerfile
+    container_name: orders-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-orders:5432/orders_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_APPLICATION_NAME: orders-service
+      SERVER_PORT: 8082
+      JWT_SECRET: your-secret-key-change-this-in-production-min-32-chars
+    depends_on:
+      postgres-orders:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    volumes:
+      - ./services/orders-service:/app
+
+  items-service:
+    build:
+      context: ./services/items-service
+      dockerfile: Dockerfile
+    container_name: items-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-items:5432/items_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_APPLICATION_NAME: items-service
+      SERVER_PORT: 8083
+      JWT_SECRET: your-secret-key-change-this-in-production-min-32-chars
+    depends_on:
+      postgres-items:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    volumes:
+      - ./services/items-service:/app
 
   frontend:
     build:
@@ -46,12 +165,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: http://localhost:8080/api
+      REACT_APP_API_URL: http://localhost:8080
     depends_on:
-      - backend
+      - api-gateway
     volumes:
       - ./frontend:/app
       - /app/node_modules
 
 volumes:
-  postgres_data:
+  postgres_customers_data:
+  postgres_orders_data:
+  postgres_items_data:
